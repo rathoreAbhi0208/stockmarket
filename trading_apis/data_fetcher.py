@@ -7,8 +7,15 @@ from strategies import evaluate_15m_strategy, evaluate_5m_strategy, evaluate_3m_
 
 def fetch_data(symbol: str, interval: int, start_time=None, end_time=None):
     """Fetch data from FMP API"""
-    clean_symbol = symbol.replace(".BSE", ".NS") if ".BSE" in symbol else symbol
-    
+    # Map common index names to their FMP API ticker format
+    index_map = {
+        'NIFTY': '^NSEI',           # Nifty 50
+        'BANKNIFTY': '^NSEBANK',    # Nifty Bank
+    }
+    symbol_upper = symbol.upper()
+
+    clean_symbol = index_map.get(symbol_upper, symbol)
+
     fmp_interval = INTERVAL_MAP.get(interval)
     if not fmp_interval:
         raise ValueError(f"Unsupported interval: {interval}m")

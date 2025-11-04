@@ -83,6 +83,12 @@ def get_multi_timeframe_strategy(
         if not symbol:
             raise HTTPException(status_code=400, detail="Symbol cannot be empty")
         
+        # Automatically append .NS for Indian stocks if not present
+        common_indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
+        symbol_upper = symbol.upper()
+        if not symbol_upper.endswith(('.NS', '.BSE')) and symbol_upper not in common_indices:
+            symbol = f"{symbol}.NS"
+
         # Fetch and combine timeframes
         timeframes_to_fetch = [15, 5, 3]
         result = combine_timeframes(symbol, timeframes_to_fetch, start_dt, end_dt)
@@ -190,6 +196,12 @@ def build_custom_strategy(request: StrategyRequest):
         if request.start_time and request.end_time:
             start_dt, end_dt = parse_time_params(request.start_time, request.end_time)
         
+        # Automatically append .NS for Indian stocks if not present
+        common_indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
+        symbol_upper = request.symbol.upper()
+        if not symbol_upper.endswith(('.NS', '.BSE')) and symbol_upper not in common_indices:
+            request.symbol = f"{request.symbol}.NS"
+
         # Collect all unique timeframes from conditions
         timeframes_needed = {request.interval}  # Base interval
         
