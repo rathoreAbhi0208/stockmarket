@@ -5,12 +5,14 @@ import pandas as pd
 from typing import List, Dict
 import asyncio
 import json
-from live_data_fetcher import live_stream
 
+from pydantic import BaseModel
+from live_data_fetcher import live_stream
 from config import IST_TZ, AVAILABLE_INDICATORS, AVAILABLE_OPERATORS
-from models import StrategyRequest
+from models import StrategyRequest, Condition
 from data_fetcher import fetch_and_process, combine_timeframes
-from strategies import evaluate_conditions, evaluate_multi_timeframe_conditions
+from strategies import evaluate_multi_timeframe_conditions
+from scanner import ScannerManager
 from utils import parse_time_params
 
 app = FastAPI(
@@ -48,6 +50,10 @@ class ConnectionManager:
                 self.active_connections[symbol].remove(conn)
 
 manager = ConnectionManager()
+
+# --- Initialize the Dynamic Scanner Manager ---
+scanner_manager = ScannerManager(connection_manager=manager)
+
 
 
 # ============================================================================
@@ -619,6 +625,60 @@ async def websocket_live_custom_strategy(websocket: WebSocket):
     
     except WebSocketDisconnect:
         print("Custom strategy client disconnected")
+
+# ============================================================================
+# Dynamic Scanner Endpoints
+# ============================================================================
+
+class ScannerStrategyRequest(BaseModel):
+    name: str = "Dynamic Scanner"
+    buy_rules: List[Condition]
+    sell_rules: List[Condition]
+
+@app.post("/scanner/start")
+async def start_dynamic_scanner(strategy_request: ScannerStrategyRequest):
+    """
+    Starts a new NSE-wide scanner with a dynamically provided strategy.
+    Returns a unique scanner_id to listen for alerts.
+    """
+    try:
+        scanner_id = scanner_manager.start_new_scanner(strategy_request.dict())
+        return {
+            "message": "Scanner started successfully!",
+            "scanner_id": scanner_id,
+            "websocket_url": f"/ws/scanner/alerts/{scanner_id}"
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start scanner: {e}")
+
+@app.post("/scanner/stop/{scanner_id}")
+async def stop_dynamic_scanner(scanner_id: str):
+    """
+    Stops a running dynamic scanner by its ID.
+    """
+    if scanner_manager.stop_scanner(scanner_id):
+        return {"message": f"Scanner {scanner_id} stopped successfully."}
+    else:
+        raise HTTPException(status_code=404, detail=f"Scanner with ID {scanner_id} not found.")
+
+@app.websocket("/ws/scanner/alerts/{scanner_id}")
+async def websocket_scanner_alerts(websocket: WebSocket, scanner_id: str):
+    """
+    Connect here with a scanner_id to receive alerts for a specific dynamic strategy.
+    """
+    await manager.connect(websocket, scanner_id)
+    try:
+        await websocket.send_json({
+            "type": "connected",
+            "message": f"Connected to scanner {scanner_id}. Waiting for alerts..."
+        })
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, scanner_id)
+        print(f"Client disconnected from scanner {scanner_id}.")
 
 if __name__ == "__main__":
     import uvicorn
