@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Trading Signals</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .controls input {
+            padding: 12px 20px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 16px;
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .controls button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-connect {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-connect:hover {
+            background: #059669;
+            transform: translateY(-2px);
+        }
+        
+        .btn-disconnect {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-disconnect:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+        }
+        
+        .status {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .status-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-connected { background: #10b981; }
+        .status-disconnected { background: #6b7280; animation: none; }
+        .status-error { background: #ef4444; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .alerts-container {
+            margin-bottom: 20px;
+        }
+        
+        .alert {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-left: 5px solid;
+            animation: slideIn 0.5s, blink 1s infinite;
+        }
+        
+        .alert-buy {
+            border-color: #10b981;
+            background: linear-gradient(90deg, #d1fae5 0%, white 100%);
+        }
+        
+        .alert-sell {
+            border-color: #ef4444;
+            background: linear-gradient(90deg, #fee2e2 0%, white 100%);
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .signals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .signal-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-left: 5px solid;
+        }
+        
+        .signal-card.BUY { border-color: #10b981; }
+        .signal-card.SELL { border-color: #ef4444; }
+        .signal-card.HOLD { border-color: #6b7280; }
+        
+        .signal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .signal-badge {
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        .badge-BUY {
+            background: #10b981;
+            color: white;
+        }
+        
+        .badge-SELL {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .badge-HOLD {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .timeframe-signals {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .tf-signal {
+            padding: 15px;
+            text-align: center;
+            border-radius: 10px;
+            background: #f3f4f6;
+        }
+        
+        .tf-signal.BUY { background: #d1fae5; color: #065f46; }
+        .tf-signal.SELL { background: #fee2e2; color: #991b1b; }
+        .tf-signal.HOLD { background: #f3f4f6; color: #374151; }
+        
+        .price-display {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        
+        .price-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px;
+            background: #f9fafb;
+            border-radius: 5px;
+        }
+        
+        .timestamp {
+            color: #6b7280;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 50px;
+            color: #6b7280;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Live Trading Signals Monitor</h1>
+            <div class="controls">
+                <input type="text" id="symbol" value="NIFTY" placeholder="Enter symbol (e.g., NIFTY, RELIANCE)">
+                <button class="btn-connect" onclick="connectLive()">🔌 Connect</button>
+                <button class="btn-disconnect" onclick="disconnect()">⛔ Disconnect</button>
+            </div>
+        </div>
+        
+        <div class="status" id="status">
+            <div class="status-dot status-disconnected"></div>
+            <div>
+                <strong>Status:</strong> Disconnected
+            </div>
+        </div>
+        
+        <div class="alerts-container" id="alerts"></div>
+        
+        <div class="signals-grid" id="signals">
+            <div class="no-data">
+                👆 Enter a symbol and click Connect to start monitoring
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let symbol = 'NIFTY';
+
+        function connectLive() {
+            if (ws) {
+                ws.close();
+            }
+            
+            symbol = document.getElementById('symbol').value.toUpperCase();
+            
+            // Connect to WebSocket
+            ws = new WebSocket(`ws://localhost:8000/ws/live_strategy_3min/${symbol}`);
+            
+            ws.onopen = () => {
+                updateStatus('connected', `✅ Connected to ${symbol}`);
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('📥 Received:', data);
+                
+                if (data.type === 'connected') {
+                    console.log('✅ WebSocket handshake complete');
+                } else if (data.type === 'signal_update') {
+                    updateSignals(data);
+                } else if (data.type === 'alert') {
+                    showAlert(data);
+                } else if (data.type === 'error') {
+                    console.error('❌ Server error:', data.message);
+                    showErrorAlert(data.message);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('❌ WebSocket Error:', error);
+                updateStatus('error', '❌ Connection Error');
+            };
+            
+            ws.onclose = () => {
+                updateStatus('disconnected', '⚠️ Disconnected');
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function updateStatus(status, message) {
+            const statusDiv = document.getElementById('status');
+            const dot = statusDiv.querySelector('.status-dot');
+            
+            dot.className = 'status-dot status-' + status;
+            statusDiv.querySelector('div').innerHTML = `<strong>Status:</strong> ${message}`;
+        }
+        
+        function updateSignals(data) {
+            const signalsDiv = document.getElementById('signals');
+            
+            // Build timeframe signals HTML
+            let timeframeHTML = '';
+            if (data.data) {
+                for (const [tf, info] of Object.entries(data.data)) {
+                    timeframeHTML += `
+                        <div class="tf-signal ${info.signal}">
+                            <div><strong>${tf}</strong></div>
+                            <div style="font-size: 20px; margin: 5px 0;">${info.signal}</div>
+                            <div>₹${info.close.toFixed(2)}</div>
+                        </div>
+                    `;
+                }
+            }
+            
+            // Get latest price data (from any timeframe)
+            let priceData = { open: 0, high: 0, low: 0, close: 0, volume: 0 };
+            if (data.data) {
+                const firstTF = Object.values(data.data)[0];
+                if (firstTF) {
+                    priceData = firstTF;
+                }
+            }
+            
+            signalsDiv.innerHTML = `
+                <div class="signal-card ${data.final_signal}">
+                    <div class="signal-header">
+                        <h2>${data.symbol}</h2>
+                        <span class="signal-badge badge-${data.final_signal}">${data.final_signal}</span>
+                    </div>
+                    
+                    <h3>Timeframe Analysis</h3>
+                    <div class="timeframe-signals">
+                        ${timeframeHTML}
+                    </div>
+                    
+                    <h3 style="margin-top: 20px;">Price Data</h3>
+                    <div class="price-display">
+                        <div class="price-item">
+                            <span>Open:</span>
+                            <strong>₹${priceData.open.toFixed(2)}</strong>
+                        </div>
+                        <div class="price-item">
+                            <span>High:</span>
+                            <strong>₹${priceData.high.toFixed(2)}</strong>
+                        </div>
+                        <div class="price-item">
+                            <span>Low:</span>
+                            <strong>₹${priceData.low.toFixed(2)}</strong>
+                        </div>
+                        <div class="price-item">
+                            <span>Close:</span>
+                            <strong>₹${priceData.close.toFixed(2)}</strong>
+                        </div>
+                    </div>
+                    
+                    <div class="timestamp">
+                        Last updated: ${new Date(data.timestamp).toLocaleString()}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function showAlert(data) {
+            const alertsDiv = document.getElementById('alerts');
+            const alertBox = document.createElement('div');
+            alertBox.className = `alert alert-${data.signal.toLowerCase()}`;
+            alertBox.innerHTML = `
+                <h2>🚨 ${data.signal} SIGNAL ALERT!</h2>
+                <p><strong>Symbol:</strong> ${data.symbol}</p>
+                <p><strong>Time:</strong> ${new Date(data.timestamp).toLocaleString()}</p>
+                <p>${data.message}</p>
+            `;
+            alertsDiv.prepend(alertBox);
+            
+            // Browser notification
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(`${data.signal} Signal - ${data.symbol}`, {
+                    body: data.message,
+                    icon: '📊',
+                    tag: data.symbol
+                });
+            }
+            
+            // Play sound (optional)
+            try {
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGWm98OScTgwOUKjo77ZiFwU7k9n0yXUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rZjHQU+ldz1xnMnBSl+zPDaizsIHG/A8uWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8uWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8rdjHQU+ld71yHUnBSh+zPLaizsIHG/A8eWUSQ0NTKbi8g==');
+                audio.play();
+            } catch (e) {}
+            
+            // Remove after 15 seconds
+            setTimeout(() => alertBox.remove(), 15000);
+        }
+        
+        function showErrorAlert(message) {
+            const alertsDiv = document.getElementById('alerts');
+            const alertBox = document.createElement('div');
+            alertBox.className = 'alert alert-sell';
+            alertBox.innerHTML = `
+                <h2>⚠️ Error</h2>
+                <p>${message}</p>
+            `;
+            alertsDiv.prepend(alertBox);
+            setTimeout(() => alertBox.remove(), 10000);
+        }
+        
+        // Request notification permission on page load
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+        
+        // Auto-reconnect on connection close
+        window.addEventListener('beforeunload', () => {
+            if (ws) {
+                ws.close();
+            }
+        });
+    </script>
+</body>
+</html>

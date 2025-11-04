@@ -1,7 +1,11 @@
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, WebSocket, WebSocketDisconnect
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
+from typing import List, Dict
+import asyncio
+import json
+from live_data_fetcher import live_stream
 
 from config import IST_TZ, AVAILABLE_INDICATORS, AVAILABLE_OPERATORS
 from models import StrategyRequest
@@ -14,6 +18,37 @@ app = FastAPI(
     description="Multi-timeframe analysis and custom strategy builder",
     version="2.0.0"
 )
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+    
+    async def connect(self, websocket: WebSocket, symbol: str):
+        await websocket.accept()
+        if symbol not in self.active_connections:
+            self.active_connections[symbol] = []
+        self.active_connections[symbol].append(websocket)
+    
+    def disconnect(self, websocket: WebSocket, symbol: str):
+        if symbol in self.active_connections:
+            self.active_connections[symbol].remove(websocket)
+    
+    async def send_to_symbol(self, symbol: str, message: dict):
+        """Send message to all clients subscribed to a symbol"""
+        if symbol in self.active_connections:
+            dead_connections = []
+            for connection in self.active_connections[symbol]:
+                try:
+                    await connection.send_json(message)
+                except:
+                    dead_connections.append(connection)
+            
+            # Clean up dead connections
+            for conn in dead_connections:
+                self.active_connections[symbol].remove(conn)
+
+manager = ConnectionManager()
+
 
 # ============================================================================
 # Root and Info Endpoints
@@ -308,10 +343,18 @@ def build_custom_strategy(request: StrategyRequest):
                 "hold": tf_counts.get('HOLD', 0)
             }
         
+        # Identify numerical columns
+        numerical_cols = result.select_dtypes(include=np.number).columns
+
+        # Replace non-finite values with None in numerical columns
+        result[numerical_cols] = result[numerical_cols].replace([np.inf, -np.inf, np.nan], None)
+
         # Build strategy description
         strategy_by_tf = {}
         for tf in timeframes_list:
             buy_conds = buy_conditions_by_tf.get(tf, [])
+
+
             sell_conds = sell_conditions_by_tf.get(tf, [])
             
             buy_desc = [f"{c.indicator} {c.operator} {c.value}" for c in buy_conds]
@@ -343,6 +386,239 @@ def build_custom_strategy(request: StrategyRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+    
+
+# # ============================================================================
+# # Live Strategy WebSocket Endpoint
+# # ============================================================================
+
+@app.websocket("/ws/live_strategy_3min/{symbol}")
+async def websocket_live_strategy(websocket: WebSocket, symbol: str):
+    """
+    Live multi-timeframe strategy WebSocket
+    
+    Usage:
+    ws://localhost:8000/ws/live_strategy_3min/NIFTY
+    """
+    # Automatically append .NS for Indian stocks
+    common_indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
+    symbol_upper = symbol.upper()
+    if not symbol_upper.endswith(('.NS', '.BSE')) and symbol_upper not in common_indices:
+        symbol = f"{symbol}.NS"
+    
+    await manager.connect(websocket, symbol)
+    
+    try:
+        # Send connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "symbol": symbol,
+            "message": "Connected to live strategy stream",
+            "timeframes": ["15m", "5m", "3m"]
+        })
+        
+        # Continuous loop to send updates
+        while True:
+            try:
+                # Get latest multi-timeframe signal
+                result = await live_stream.get_multi_timeframe_signal(
+                    symbol, 
+                    timeframes=[15, 5, 3]
+                )
+                
+                if result['latest_data']:
+                    # Send update to client
+                    await websocket.send_json({
+                        "type": "signal_update",
+                        "symbol": symbol,
+                        "timestamp": result['timestamp'],
+                        "final_signal": result['final_signal'],
+                        "signals": result['timeframe_signals'],
+                        "data": result['latest_data']
+                    })
+                    
+                    # If there's a BUY/SELL signal, send alert
+                    if result['final_signal'] in ['BUY', 'SELL']:
+                        await websocket.send_json({
+                            "type": "alert",
+                            "symbol": symbol,
+                            "signal": result['final_signal'],
+                            "timestamp": result['timestamp'],
+                            "message": f"🚨 {result['final_signal']} Signal Generated!"
+                        })
+                
+            except Exception as e:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Error processing data: {str(e)}"
+                })
+            
+            # Wait before next update (check every 30 seconds)
+            await asyncio.sleep(30)
+    
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, symbol)
+        print(f"Client disconnected from {symbol}")
+
+# ============================================================================
+# Live Custom Strategy WebSocket
+# ============================================================================
+
+@app.websocket("/ws/live_custom_strategy")
+async def websocket_live_custom_strategy(websocket: WebSocket):
+    """
+    Live custom strategy with dynamic rules
+    
+    Client sends strategy config, receives live updates
+    """
+    await websocket.accept()
+    
+    try:
+        # Receive strategy configuration
+        config = await websocket.receive_json()
+        
+        symbol = config.get('symbol', 'NIFTY')
+        interval = config.get('interval', 3)
+        buy_rules = config.get('buy_rules', [])
+        sell_rules = config.get('sell_rules', [])
+        
+        # Automatically append .NS
+        common_indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
+        symbol_upper = symbol.upper()
+        if not symbol_upper.endswith(('.NS', '.BSE')) and symbol_upper not in common_indices:
+            symbol = f"{symbol}.NS"
+        
+        await websocket.send_json({
+            "type": "strategy_loaded",
+            "symbol": symbol,
+            "interval": interval,
+            "message": "Custom strategy loaded, monitoring live data..."
+        })
+        
+        # Import here to avoid circular imports
+        from models import Condition
+        from strategies import evaluate_multi_timeframe_conditions
+        from data_fetcher import combine_timeframes
+        
+        # Parse conditions
+        buy_conditions = [Condition(**rule) for rule in buy_rules]
+        sell_conditions = [Condition(**rule) for rule in sell_rules]
+        
+        # Collect timeframes
+        timeframes_needed = {interval}
+        for rule in buy_rules + sell_rules:
+            if rule.get('timeframe'):
+                timeframes_needed.add(rule['timeframe'])
+        timeframes_list = sorted(list(timeframes_needed))
+        
+        while True:
+            try:
+                # Fetch live data for all needed timeframes
+                now = datetime.now(IST_TZ)
+                start_time = now - timedelta(days=2)
+                
+                combined_df = combine_timeframes(symbol, timeframes_list, start_time, now)
+                
+                if not combined_df.empty:
+                    # Group conditions by timeframe
+                    buy_conditions_by_tf = {}
+                    sell_conditions_by_tf = {}
+                    
+                    for cond in buy_conditions:
+                        tf = cond.timeframe if cond.timeframe else interval
+                        if tf not in buy_conditions_by_tf:
+                            buy_conditions_by_tf[tf] = []
+                        buy_conditions_by_tf[tf].append(cond)
+                    
+                    for cond in sell_conditions:
+                        tf = cond.timeframe if cond.timeframe else interval
+                        if tf not in sell_conditions_by_tf:
+                            sell_conditions_by_tf[tf] = []
+                        sell_conditions_by_tf[tf].append(cond)
+                    
+                    # Evaluate each timeframe
+                    timeframe_signals = {}
+                    for tf in timeframes_list:
+                        buy_conds = buy_conditions_by_tf.get(tf, [])
+                        sell_conds = sell_conditions_by_tf.get(tf, [])
+                        
+                        if buy_conds:
+                            buy_sig = evaluate_multi_timeframe_conditions(
+                                combined_df, buy_conds, timeframes_list
+                            )
+                        else:
+                            buy_sig = pd.Series([False] * len(combined_df), index=combined_df.index)
+                        
+                        if sell_conds:
+                            sell_sig = evaluate_multi_timeframe_conditions(
+                                combined_df, sell_conds, timeframes_list
+                            )
+                        else:
+                            sell_sig = pd.Series([False] * len(combined_df), index=combined_df.index)
+                        
+                        signal_col = f'Signal_{tf}m'
+                        combined_df[signal_col] = 'HOLD'
+                        combined_df.loc[buy_sig, signal_col] = 'BUY'
+                        combined_df.loc[sell_sig, signal_col] = 'SELL'
+                        
+                        timeframe_signals[tf] = signal_col
+                    
+                    # Confluence
+                    buy_confluence = pd.Series([True] * len(combined_df), index=combined_df.index)
+                    sell_confluence = pd.Series([True] * len(combined_df), index=combined_df.index)
+                    
+                    for sig_col in timeframe_signals.values():
+                        buy_confluence &= (combined_df[sig_col] == 'BUY')
+                        sell_confluence &= (combined_df[sig_col] == 'SELL')
+                    
+                    combined_df['Signal'] = 'HOLD'
+                    combined_df.loc[buy_confluence, 'Signal'] = 'BUY'
+                    combined_df.loc[sell_confluence, 'Signal'] = 'SELL'
+                    
+                    # Get latest
+                    latest = combined_df.iloc[-1]
+                    
+                    # Build response
+                    tf_signals = {}
+                    for tf, sig_col in timeframe_signals.items():
+                        tf_signals[f"{tf}m"] = latest.get(sig_col, 'HOLD')
+                    
+                    await websocket.send_json({
+                        "type": "signal_update",
+                        "symbol": symbol,
+                        "timestamp": str(latest.name),
+                        "final_signal": latest['Signal'],
+                        "timeframe_signals": tf_signals,
+                        "price": {
+                            "open": float(latest['Open']),
+                            "high": float(latest['High']),
+                            "low": float(latest['Low']),
+                            "close": float(latest['Close']),
+                            "volume": int(latest['Volume'])
+                        }
+                    })
+                    
+                    # Alert on BUY/SELL
+                    if latest['Signal'] in ['BUY', 'SELL']:
+                        await websocket.send_json({
+                            "type": "alert",
+                            "symbol": symbol,
+                            "signal": latest['Signal'],
+                            "timestamp": str(latest.name),
+                            "message": f"🚨 {latest['Signal']} Signal!"
+                        })
+                
+            except Exception as e:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Error: {str(e)}"
+                })
+            
+            # Check every 30 seconds
+            await asyncio.sleep(30)
+    
+    except WebSocketDisconnect:
+        print("Custom strategy client disconnected")
 
 if __name__ == "__main__":
     import uvicorn
