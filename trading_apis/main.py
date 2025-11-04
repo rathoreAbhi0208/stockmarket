@@ -174,20 +174,6 @@ def get_multi_timeframe_strategy(
 def build_custom_strategy(request: StrategyRequest):
     """
     Build and evaluate a custom trading strategy with per-indicator timeframes
-    
-    Example:
-    {
-        "symbol": "RELIANCE.NS",
-        "interval": 3,
-        "buy_rules": [
-            {"indicator": "RSI", "operator": ">", "value": 50, "timeframe": 15},
-            {"indicator": "MACD", "operator": ">", "value": "SIGNAL_LINE", "timeframe": 3}
-        ],
-        "sell_rules": [
-            {"indicator": "RSI", "operator": "<", "value": 50, "timeframe": 15},
-            {"indicator": "MACD", "operator": "<", "value": "SIGNAL_LINE", "timeframe": 3}
-        ]
-    }
     """
     try:
         start_dt = None
@@ -212,53 +198,95 @@ def build_custom_strategy(request: StrategyRequest):
         timeframes_list = sorted(list(timeframes_needed))
         print(f"Timeframes needed: {timeframes_list}")
         
-        # If only base timeframe is needed, use simple fetch
-        if len(timeframes_needed) == 1:
-            df = fetch_and_process(request.symbol, request.interval, start_dt, end_dt)
-            
-            if df.empty:
-                raise HTTPException(
-                    status_code=404,
-                    detail="No data available for the specified parameters"
-                )
-            
-            # Evaluate buy and sell conditions on base timeframe
-            buy_signals = evaluate_conditions(df, request.buy_rules)
-            sell_signals = evaluate_conditions(df, request.sell_rules)
-            
-        else:
-            # Multi-timeframe approach: fetch and combine all timeframes
-            combined_df = combine_timeframes(request.symbol, timeframes_list, start_dt, end_dt)
-            
-            if combined_df.empty:
-                raise HTTPException(
-                    status_code=404,
-                    detail="No data available for the specified parameters"
-                )
-            
-            # Evaluate conditions with timeframe-specific logic
-            buy_signals = evaluate_multi_timeframe_conditions(combined_df, request.buy_rules, timeframes_list)
-            sell_signals = evaluate_multi_timeframe_conditions(combined_df, request.sell_rules, timeframes_list)
-            
-            df = combined_df
+        # Fetch and combine timeframes
+        combined_df = combine_timeframes(request.symbol, timeframes_list, start_dt, end_dt)
         
-        # Generate signals
-        df['Signal'] = 'HOLD'
-        df.loc[buy_signals, 'Signal'] = 'BUY'
-        df.loc[sell_signals, 'Signal'] = 'SELL'
+        if combined_df.empty:
+            raise HTTPException(
+                status_code=404,
+                detail="No data available for the specified parameters"
+            )
+        
+        # Group conditions by timeframe
+        buy_conditions_by_tf = {}
+        sell_conditions_by_tf = {}
+        
+        for condition in request.buy_rules:
+            tf = condition.timeframe if condition.timeframe else request.interval
+            if tf not in buy_conditions_by_tf:
+                buy_conditions_by_tf[tf] = []
+            buy_conditions_by_tf[tf].append(condition)
+        
+        for condition in request.sell_rules:
+            tf = condition.timeframe if condition.timeframe else request.interval
+            if tf not in sell_conditions_by_tf:
+                sell_conditions_by_tf[tf] = []
+            sell_conditions_by_tf[tf].append(condition)
+        
+        # Evaluate each timeframe independently
+        timeframe_signals = {}
+        
+        for tf in timeframes_list:
+            # Get conditions for this timeframe
+            buy_conds = buy_conditions_by_tf.get(tf, [])
+            sell_conds = sell_conditions_by_tf.get(tf, [])
+            
+            # Evaluate conditions for this timeframe
+            if buy_conds:
+                buy_signals_tf = evaluate_multi_timeframe_conditions(
+                    combined_df, buy_conds, timeframes_list
+                )
+            else:
+                buy_signals_tf = pd.Series([False] * len(combined_df), index=combined_df.index)
+            
+            if sell_conds:
+                sell_signals_tf = evaluate_multi_timeframe_conditions(
+                    combined_df, sell_conds, timeframes_list
+                )
+            else:
+                sell_signals_tf = pd.Series([False] * len(combined_df), index=combined_df.index)
+            
+            # Create signal column for this timeframe
+            signal_col = f'Signal_{tf}m'
+            combined_df[signal_col] = 'HOLD'
+            combined_df.loc[buy_signals_tf, signal_col] = 'BUY'
+            combined_df.loc[sell_signals_tf, signal_col] = 'SELL'
+            
+            timeframe_signals[tf] = signal_col
+        
+        # Apply confluence logic: all timeframes must agree
+        buy_confluence = pd.Series([True] * len(combined_df), index=combined_df.index)
+        sell_confluence = pd.Series([True] * len(combined_df), index=combined_df.index)
+        
+        for signal_col in timeframe_signals.values():
+            buy_confluence &= (combined_df[signal_col] == 'BUY')
+            sell_confluence &= (combined_df[signal_col] == 'SELL')
+        
+        # Generate final signal
+        combined_df['Signal'] = 'HOLD'
+        combined_df.loc[buy_confluence, 'Signal'] = 'BUY'
+        combined_df.loc[sell_confluence, 'Signal'] = 'SELL'
         
         # Prepare response
-        result = df.reset_index()
+        result = combined_df.reset_index()
         result = result.sort_values('datetime', ascending=False)
         result['datetime'] = result['datetime'].dt.strftime('%Y-%m-%d %H:%M:%S')
         
-        # Select output columns
-        output_columns = ['datetime', 'Open', 'High', 'Low', 'Close', 'Volume', 'Signal']
+        # Select output columns - include per-timeframe signals
+        output_columns = ['datetime', 'Open', 'High', 'Low', 'Close', 'Volume']
+        
+        # Add per-timeframe signal columns
+        for signal_col in timeframe_signals.values():
+            if signal_col in result.columns:
+                output_columns.append(signal_col)
+        
+        # Add final signal
+        output_columns.append('Signal')
         
         # Add indicator columns that were used in conditions
         used_indicators = set()
         for condition in request.buy_rules + request.sell_rules:
-            timeframe_suffix = f"_{condition.timeframe}m" if condition.timeframe and len(timeframes_needed) > 1 else ""
+            timeframe_suffix = f"_{condition.timeframe}" if condition.timeframe and len(timeframes_needed) > 1 else ""
             used_indicators.add(condition.indicator.upper() + timeframe_suffix)
             if isinstance(condition.value, str):
                 used_indicators.add(condition.value.upper() + timeframe_suffix)
@@ -270,41 +298,51 @@ def build_custom_strategy(request: StrategyRequest):
         # Count signals
         signal_counts = result['Signal'].value_counts().to_dict()
         
-        # Build strategy description
-        buy_conditions_desc = []
-        for c in request.buy_rules:
-            tf_str = f" [{c.timeframe}m]" if c.timeframe else ""
-            buy_conditions_desc.append(f"{c.indicator}{tf_str} {c.operator} {c.value}")
+        # Count per-timeframe signals
+        tf_signal_counts = {}
+        for tf, signal_col in timeframe_signals.items():
+            tf_counts = result[signal_col].value_counts().to_dict()
+            tf_signal_counts[f"{tf}m"] = {
+                "buy": tf_counts.get('BUY', 0),
+                "sell": tf_counts.get('SELL', 0),
+                "hold": tf_counts.get('HOLD', 0)
+            }
         
-        sell_conditions_desc = []
-        for c in request.sell_rules:
-            tf_str = f" [{c.timeframe}m]" if c.timeframe else ""
-            sell_conditions_desc.append(f"{c.indicator}{tf_str} {c.operator} {c.value}")
+        # Build strategy description
+        strategy_by_tf = {}
+        for tf in timeframes_list:
+            buy_conds = buy_conditions_by_tf.get(tf, [])
+            sell_conds = sell_conditions_by_tf.get(tf, [])
+            
+            buy_desc = [f"{c.indicator} {c.operator} {c.value}" for c in buy_conds]
+            sell_desc = [f"{c.indicator} {c.operator} {c.value}" for c in sell_conds]
+            
+            strategy_by_tf[f"{tf}m"] = {
+                "buy_conditions": buy_desc,
+                "sell_conditions": sell_desc
+            }
         
         return {
             "symbol": request.symbol,
             "interval": f"{request.interval}m",
             "timezone": "Asia/Kolkata (IST)",
             "timeframes_used": [f"{tf}m" for tf in timeframes_list],
-            "strategy": {
-                "buy_conditions": buy_conditions_desc,
-                "sell_conditions": sell_conditions_desc
-            },
+            "strategy_by_timeframe": strategy_by_tf,
             "signal_summary": {
                 "total_candles": len(result),
-                "buy_signals": signal_counts.get('BUY', 0),
-                "sell_signals": signal_counts.get('SELL', 0),
-                "hold_signals": signal_counts.get('HOLD', 0)
+                "final_buy_signals": signal_counts.get('BUY', 0),
+                "final_sell_signals": signal_counts.get('SELL', 0),
+                "final_hold_signals": signal_counts.get('HOLD', 0),
+                "per_timeframe": tf_signal_counts
             },
             "data": result[output_columns].to_dict(orient="records"),
-            "message": f"Strategy evaluated successfully on {len(result)} candles using {len(timeframes_list)} timeframe(s)"
+            "message": f"Strategy evaluated with confluence across {len(timeframes_list)} timeframe(s). Final signal requires all timeframes to agree."
         }
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
 
 if __name__ == "__main__":
     import uvicorn
