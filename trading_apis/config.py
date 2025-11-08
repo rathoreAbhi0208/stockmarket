@@ -2,7 +2,8 @@ import pytz
 
 # API Configuration
 FMP_BASE_URL = "https://financialmodelingprep.com/api/v3/historical-chart"
-FMP_API_KEY = "pNfPaAqCCLW5TIyeNfmbJ9CaocjvSfNb"
+FMP_API_KEY = "84y12ovhukWyiW2v1MjL4bxx8TXskGOb"
+
 
 # Timezone
 IST_TZ = pytz.timezone("Asia/Kolkata")

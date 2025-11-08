@@ -11,7 +11,7 @@ app = FastAPI(title="Dynamic Strategy Builder API")
 
 # --- Configuration ---
 FMP_BASE_URL = "https://financialmodelingprep.com/api/v3/historical-chart"
-FMP_API_KEY = "pNfPaAqCCLW5TIyeNfmbJ9CaocjvSfNb"
+FMP_API_KEY = "84y12ovhukWyiW2v1MjL4bxx8TXskGOb"
 
 # --- Pydantic Models ---
 class Condition(BaseModel):

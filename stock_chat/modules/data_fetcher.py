@@ -5,7 +5,7 @@ from modules.data_sources.fundamental_fetcher import AlphaVantageFetcher, YahooF
 import requests
 from datetime import datetime
 
-FMP_API_KEY = "pNfPaAqCCLW5TIyeNfmbJ9CaocjvSfNb"
+FMP_API_KEY = "84y12ovhukWyiW2v1MjL4bxx8TXskGOb"
 
 # Common Indian stock tickers with company names
 INDIAN_STOCKS = {

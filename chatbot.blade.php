@@ -233,7 +233,7 @@
 	</div>
 </div>
 <script type="module">
-	const TWELVE_DATA_API_KEY = 'pNfPaAqCCLW5TIyeNfmbJ9CaocjvSfNb'; // Your Twelve Data API Key
+	const TWELVE_DATA_API_KEY = '84y12ovhukWyiW2v1MjL4bxx8TXskGOb'; // Your Twelve Data API Key
 	
 	// --- Global Data Holders ---
 	let currentStockData = null; // Raw candle data
@@ -308,7 +308,7 @@
 	fromDate.setFullYear(fromDate.getFullYear() - 1); // 1 year back
 	const fromStr = fromDate.toISOString().split('T')[0];
 	
-	const apiUrl = `https://financialmodelingprep.com/api/v3/historical-chart/1day/${symbol}?from=${fromStr}&to=${toDate}&apikey=pNfPaAqCCLW5TIyeNfmbJ9CaocjvSfNb`;
+	const apiUrl = `https://financialmodelingprep.com/api/v3/historical-chart/1day/${symbol}?from=${fromStr}&to=${toDate}&apikey=84y12ovhukWyiW2v1MjL4bxx8TXskGOb`;
 	
 	const response = await fetch(apiUrl);
 	const data = await response.json();
@@ -329,7 +329,7 @@
 	
 	
 	async function fetchCurrentPrice(symbol) {
-	const apiUrl = `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=pNfPaAqCCLW5TIyeNfmbJ9CaocjvSfNb`;
+	const apiUrl = `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=84y12ovhukWyiW2v1MjL4bxx8TXskGOb`;
 	const response = await fetch(apiUrl);
 	const data = await response.json();
 	

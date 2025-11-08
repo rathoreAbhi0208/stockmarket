@@ -300,7 +300,7 @@ def generate_signal(df):
     return df
 
 FMP_BASE_URL = "https://financialmodelingprep.com/api/v3/historical-chart"
-FMP_API_KEY = "pNfPaAqCCLW5TIyeNfmbJ9CaocjvSfNb"
+FMP_API_KEY = "84y12ovhukWyiW2v1MjL4bxx8TXskGOb"
 
 def fetch_and_process(symbol: str, interval: int, start_time=None, end_time=None):
     """
