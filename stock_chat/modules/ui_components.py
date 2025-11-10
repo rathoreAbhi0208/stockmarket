@@ -9,10 +9,6 @@ def render_sidebar() -> Config:
     """Render sidebar and return configuration"""
     with st.sidebar:
         st.title("📈 Stock Analysis")
-        st.caption("🆓 100% Free - No Payment Required!")
-        
-        ticker = st.text_input("Stock Ticker", value="RELIANCE")
-        company_name = st.text_input("Company Name", value="Reliance Industries")
         
         st.divider()
         
@@ -92,8 +88,8 @@ def render_sidebar() -> Config:
             st.rerun()
         
         return Config(
-            ticker=ticker,
-            company_name=company_name,
+            ticker=None, # No longer needed from sidebar
+            company_name=None, # No longer needed from sidebar
             llm_api_key=llm_api_key,
             llm_model=llm_model,
             news_api_key=news_api_key or None,
@@ -109,19 +105,17 @@ def render_chat_interface(config: Config):
     
     # Welcome banner
     if len(st.session_state.messages) == 0:
-        st.info(f"""
-        🎯 **Analyzing: {config.ticker} ({config.company_name})**
+        st.info("""
+        🎯 **Welcome to Stock Analysis Chat!**
         
         Try asking:
-        - "Show me the fundamentals"
-        - "What's the latest news?"
-        - "Q3 earnings commentary"
-        - "What's the P/E ratio and market cap?"
+        - "Show me the fundamentals for RELIANCE"
+        - "What's the latest news for INFY?"
+        - "Q3 earnings commentary for TCS"
+        - "What's the P/E ratio and market cap for HDFCBANK?"
         
         💡 All features work without any API keys!
         """)
-    
-    st.title(f"💬 {config.ticker} Analysis")
     
     # Display messages
     for message in st.session_state.messages:
@@ -145,28 +139,42 @@ def render_chat_interface(config: Config):
 def process_query(prompt: str, config: Config) -> str:
     """Process user query and generate response"""
     fetcher = StockDataFetcher(config)
-    intent = IntentParser.parse(prompt, config.ticker)
+    intent = IntentParser.parse(prompt)
+    
+    ticker = intent.get("ticker")
+    
+    if not ticker:
+        return """**I can help you analyze stocks!** 📊
+
+Please include a stock ticker in your query. For example:
+- "Show fundamentals for **RELIANCE**"
+- "Latest news for **TCS**"
+- "Q3 earnings commentary for **INFY**"
+
+💡 **Pro tip:** All data features work without any API keys - completely free!
+"""
     
     data = None
     response = ""
+    company_name = fetcher._get_company_name(ticker)
 
     # Fetch data based on intent
     if intent["type"] == "fundamental":
-        data = fetcher.get_fundamental_data(config.ticker)
-        response = format_fundamental_response(data, config)
+        data = fetcher.get_fundamental_data(ticker)
+        response = format_fundamental_response(data, ticker, company_name)
         
     elif intent["type"] == "news":
         data = fetcher.get_latest_news(
-            ticker=config.ticker,
-            company_name=config.company_name,
+            ticker=ticker,
+            company_name=company_name,
             news_api_key=config.news_api_key,
             finnhub_api_key=config.finnhub_api_key
         )
-        response = format_news_response(data, config)
+        response = format_news_response(data, ticker)
         
     elif intent["type"] == "earnings":
-        data = fetcher.get_earnings_commentary(config.ticker, intent.get("quarter"))
-        response = format_earnings_response(data, config.ticker)
+        data = fetcher.get_earnings_commentary(ticker, intent.get("quarter"))
+        response = format_earnings_response(data, ticker)
         
     elif intent["type"] == "tweets":
         if not config.twitter_username:
@@ -174,11 +182,9 @@ def process_query(prompt: str, config: Config) -> str:
         
         data = fetcher.get_leader_tweets(config.twitter_username)
         response = format_tweets_response(data, config.twitter_username)
-
-
     else:
         # General query or unclear intent
-        response = f"""**I can help you analyze {config.ticker}!** 📊
+        response = f"""**I can help you analyze {ticker}!** 📊
 
 **Available Commands:**
 
@@ -190,7 +196,7 @@ def process_query(prompt: str, config: Config) -> str:
 📰 **News** 
 - "Latest news"
 - "Recent headlines"
-- "What's happening with {config.ticker}?"
+- "What's happening with {ticker}?"
 
 🗣️ **Earnings**
 - "Q3 earnings commentary" (US stocks only)
@@ -269,13 +275,13 @@ def call_ollama(prompt: str, data: Dict) -> str:
         return f"\n\n⚠️ Ollama error: {str(e)}\n\nMake sure Ollama is installed and running."
 
 
-def format_fundamental_response(data: Dict, config: Config) -> str:
+def format_fundamental_response(data: Dict, ticker: str, company_name: str) -> str:
     """Format fundamental data with insights"""
     if "error" in data:
         return f"⚠️ **Error:** {data['error']}"
     
-    response = f"""## 📊 {config.ticker} - Fundamental Analysis
-**{config.company_name}**
+    response = f"""## 📊 {ticker} - Fundamental Analysis
+**{company_name}**
 
 ---
 
@@ -320,12 +326,12 @@ def format_fundamental_response(data: Dict, config: Config) -> str:
     return response
 
 
-def format_news_response(articles: List[Dict], config: Config) -> str:
+def format_news_response(articles: List[Dict], ticker: str) -> str:
     """Format news with better structure"""
     if not articles:
-        return f"⚠️ No recent news found for {config.ticker}"
+        return f"⚠️ No recent news found for {ticker}"
     
-    response = f"""## 📰 Latest News: {config.ticker}
+    response = f"""## 📰 Latest News: {ticker}
 
 ---
 

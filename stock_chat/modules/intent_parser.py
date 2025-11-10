@@ -1,20 +1,40 @@
 from typing import Dict
 import re
 
+# Import from data_fetcher to get the list of known stocks
+from modules.data_fetcher import INDIAN_STOCKS
+
 class IntentParser:
     """Parse user intent from queries"""
     
     @staticmethod
-    def parse(query: str, ticker: str) -> Dict:
+    def _find_ticker(query: str) -> str | None:
+        """Find a known stock ticker in the query string."""
+        query_upper = query.upper()
+        # Check for word boundaries to avoid matching parts of words
+        for ticker in INDIAN_STOCKS.keys():
+            # \b is a word boundary in regex
+            if re.search(r'\b' + ticker + r'\b', query_upper):
+                return ticker
+        return None
+
+    @staticmethod
+    def parse(query: str) -> Dict:
         query_lower = query.lower()
         
+        # Find the ticker in the query first
+        ticker = IntentParser._find_ticker(query)
+
         intent = {
             "type": "general",
             "ticker": ticker,
             "quarter": None,
             "username": None
         }
-        
+
+        if not ticker: # If no ticker is found, no need to check for other intents
+            return intent
+
         # Check for fundamental analysis keywords
         if any(w in query_lower for w in ["fundamental", "financials", "ratios", "p/e", "pe ratio", 
                                             "market cap", "revenue", "profit margin", "roe", "debt"]):
