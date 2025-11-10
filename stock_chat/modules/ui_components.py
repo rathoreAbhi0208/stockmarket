@@ -142,16 +142,21 @@ def process_query(prompt: str, config: Config) -> str:
     intent = IntentParser.parse(prompt)
     
     ticker = intent.get("ticker")
+    suggestion = intent.get("suggestion")
     
     if not ticker:
-        return """**I can help you analyze stocks!** 📊
+        if suggestion:
+            return f"""Did you mean **{suggestion}**?
+
+Please try your query again with the suggested ticker. For example:
+- "Show fundamentals for **{suggestion}**"
+"""
+        else:
+            return """**I can help you analyze stocks!** 📊
 
 Please include a stock ticker in your query. For example:
 - "Show fundamentals for **RELIANCE**"
 - "Latest news for **TCS**"
-- "Q3 earnings commentary for **INFY**"
-
-💡 **Pro tip:** All data features work without any API keys - completely free!
 """
     
     data = None
