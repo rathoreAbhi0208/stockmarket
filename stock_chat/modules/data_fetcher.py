@@ -5,34 +5,39 @@ from modules.data_sources.commentary_fetcher import CommentaryFetcher
 from modules.data_sources.fundamental_fetcher import AlphaVantageFetcher, YahooFinanceFetcher
 import requests
 from datetime import datetime
+import json
+import os
 
 FMP_API_KEY = "84y12ovhukWyiW2v1MjL4bxx8TXskGOb"
 
-# Common Indian stock tickers with company names
-INDIAN_STOCKS = {
-    'TCS': 'Tata Consultancy Services',
-    'INFY': 'Infosys',
-    'RELIANCE': 'Reliance Industries',
-    'HDFCBANK': 'HDFC Bank',
-    'ICICIBANK': 'ICICI Bank',
-    'HINDUNILVR': 'Hindustan Unilever',
-    'ITC': 'ITC Limited',
-    'SBIN': 'State Bank of India',
-    'BHARTIARTL': 'Bharti Airtel',
-    'KOTAKBANK': 'Kotak Mahindra Bank',
-    'LT': 'Larsen & Toubro',
-    'AXISBANK': 'Axis Bank',
-    'ASIANPAINT': 'Asian Paints',
-    'MARUTI': 'Maruti Suzuki',
-    'TITAN': 'Titan Company',
-    'BAJFINANCE': 'Bajaj Finance',
-    'SUNPHARMA': 'Sun Pharmaceutical',
-    'WIPRO': 'Wipro',
-    'TECHM': 'Tech Mahindra',
-    'HCLTECH': 'HCL Technologies',
-    'ULTRACEMCO': 'UltraTech Cement',
-    'NESTLEIND': 'Nestle India'
-}
+def load_indian_stocks():
+    """
+    Loads the comprehensive list of Indian stocks from a JSON file.
+    Falls back to a small hardcoded list if the file is not found.
+    """
+    json_path = os.path.join(os.path.dirname(__file__), 'data_sources', 'nse_stocks.json')
+    
+    if os.path.exists(json_path):
+        print("✅ Loading comprehensive NSE stock list...")
+        with open(json_path, 'r') as f:
+            return json.load(f)
+    else:
+        print("⚠️ Comprehensive NSE stock list not found. Using a small fallback list.")
+        print(f"💡 To generate the full list, run: python scripts/generate_stock_list.py")
+        # Fallback to a small list of common stocks
+        return {
+            'TCS': 'Tata Consultancy Services', 'INFY': 'Infosys', 'RELIANCE': 'Reliance Industries',
+            'HDFCBANK': 'HDFC Bank', 'ICICIBANK': 'ICICI Bank', 'HINDUNILVR': 'Hindustan Unilever',
+            'ITC': 'ITC Limited', 'SBIN': 'State Bank of India', 'BHARTIARTL': 'Bharti Airtel',
+            'KOTAKBANK': 'Kotak Mahindra Bank', 'LT': 'Larsen & Toubro', 'AXISBANK': 'Axis Bank',
+            'ASIANPAINT': 'Asian Paints', 'MARUTI': 'Maruti Suzuki', 'TITAN': 'Titan Company',
+            'BAJFINANCE': 'Bajaj Finance', 'SUNPHARMA': 'Sun Pharmaceutical', 'WIPRO': 'Wipro',
+            'TECHM': 'Tech Mahindra', 'HCLTECH': 'HCL Technologies', 'ULTRACEMCO': 'UltraTech Cement',
+            'NESTLEIND': 'Nestle India'
+        }
+
+# Load the list of all Indian stocks
+INDIAN_STOCKS = load_indian_stocks()
 
 class StockDataFetcher:
     """Unified interface for all data sources"""
