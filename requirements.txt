@@ -4,3 +4,4 @@ pyparsing
 fastapi
 uvicorn
 yfinance
+pygooglenews

@@ -340,60 +340,37 @@ def format_news_response(articles: List[Dict], config: Config) -> str:
 def format_earnings_response(data: Dict, ticker: str) -> str:
     """Format earnings commentary"""
     if "error" in data:
-        error_msg = data['error']
-        
-        # Build helpful response
-        response = f"""## 🗣️ Earnings Commentary: {ticker}
+        return f"⚠️ **Error:** {data['error']}\n\n💡 {data.get('suggestion', '')}"
 
-⚠️ {error_msg}
-
-"""
-        
-        # Add specific guidance
-        if data.get('note') == "Indian Stock Limitation":
-            response += f"""
-**Why?** Earnings transcripts are primarily available for US stocks on FMP.
-
-**Alternatives for Indian stocks:**
-
-1. 📰 **Get earnings news instead:**
-   - Ask: "Latest news about {ticker} earnings"
-   - Ask: "Recent {ticker} results"
-
-2. 🌐 **Company investor relations:**
-   - Check the company's official website
-   - Look for "Investor Relations" section
-   
-3. 📊 **Try fundamentals:**
-   - Ask: "Show me {ticker} fundamentals"
-   - This will show you revenue, profit margins, etc.
-
-{data.get('alternative', '')}
-"""
-        else:
-            response += f"""
-**For US stocks:**
-- Try different quarters: "Q4 2024 earnings" or "Q3 2024 earnings"  
-- Recent quarters might not be available yet
-- Check if the ticker symbol is correct
-
-**Alternative:**
-- Ask: "Latest news about {ticker} earnings"
-- This will show earnings-related news articles
-
-{data.get('suggestion', '')}
-"""
-        
+    # Handle news commentary for Indian stocks
+    if data.get("type") == "commentary":
+        articles = data.get("articles", [])
+        response = f"## 🗣️ Earnings Commentary: {ticker}\n\n"
+        response += "Here are the top news articles related to recent earnings:\n\n---\n\n"
+        for i, article in enumerate(articles, 1):
+            response += f"### {i}. {article['title']}\n\n"
+            pub_date = article.get('published', 'N/A')
+            if pub_date and ' ' in pub_date:
+                pub_date = pub_date.split(' ')[0] # Clean up date
+            
+            response += f"📅 {pub_date} | 📰 {article.get('source', 'N/A')}\n\n"
+            
+            if article.get('link') and article['link'] != '#':
+                response += f"[Read more →]({article['link']})\n\n"
+            
+            response += "---\n\n"
         return response
-    
-    content = data.get('content', '')
-    quarter = data.get('quarter', 'N/A')
-    year = data.get('year', 'N/A')
-    
-    # Extract key points (first 2000 chars)
-    preview = content[:2000] if len(content) > 2000 else content
-    
-    response = f"""## 🗣️ Earnings Call: {ticker} Q{quarter} {year}
+
+    # Handle transcript for US stocks
+    elif data.get("type") == "transcript":
+        content = data.get('content', '')
+        quarter = data.get('quarter', 'N/A')
+        year = data.get('year', 'N/A')
+        
+        # Extract key points (first 2000 chars)
+        preview = content[:2000] if len(content) > 2000 else content
+        
+        response = f"""## 🗣️ Earnings Call Transcript: {ticker} Q{quarter} {year}
 
 ---
 
@@ -405,8 +382,9 @@ def format_earnings_response(data: Dict, ticker: str) -> str:
 
 💡 **This is {'a preview of' if len(content) > 2000 else ''} the earnings call transcript from Financial Modeling Prep.**
 """
-    
-    return response
+        return response
+
+    return "⚠️ Could not format the earnings response. The data structure was not recognized."
 
 
 def format_large_number(value):

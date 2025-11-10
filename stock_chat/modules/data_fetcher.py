@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 from modules.data_sources.news_fetcher import NewsAPIFetcher, FinnhubNewsFetcher, GoogleNewsFetcher
 from modules.data_sources.twitter_fetcher import TwitterAPIFetcher
+from modules.data_sources.commentary_fetcher import CommentaryFetcher
 from modules.data_sources.fundamental_fetcher import AlphaVantageFetcher, YahooFinanceFetcher
 import requests
 from datetime import datetime
@@ -45,6 +46,7 @@ class StockDataFetcher:
         self.twitter_fetcher = TwitterAPIFetcher(None)
         self.alpha_vantage = AlphaVantageFetcher(config.alpha_vantage_key)
         self.yahoo_finance = YahooFinanceFetcher()
+        self.commentary_fetcher = CommentaryFetcher()
     
     def _is_indian_stock(self, ticker: str) -> bool:
         """Check if ticker is likely an Indian stock"""
@@ -123,17 +125,6 @@ class StockDataFetcher:
         
         # Check if it's an Indian stock
         is_indian = self._is_indian_stock(ticker)
-        
-        if is_indian:
-            company_name = self._get_company_name(ticker)
-            return {
-                "error": f"Earnings transcripts not available for {company_name} ({ticker})",
-                "note": "Indian Stock Limitation",
-                "suggestion": "Try checking the company's investor relations website or search for earnings news instead.",
-                "alternative": f"You can ask: 'What's the latest news about {ticker} earnings?'"
-            }
-        
-        # For US stocks, proceed with FMP API
         now = datetime.now()
         year = now.year
         
@@ -145,6 +136,19 @@ class StockDataFetcher:
                 year -= 1
             quarter = f"Q{last_quarter_num}"
 
+        if is_indian:
+            company_name = self._get_company_name(ticker)
+            print(f"Fetching earnings commentary for Indian stock: {company_name}")
+            articles = self.commentary_fetcher.fetch(company_name, quarter, str(year))
+            if not articles:
+                return {
+                    "error": f"No earnings commentary found for {company_name} ({ticker}) for {quarter} {year}",
+                    "note": "Indian Stock Information",
+                    "suggestion": "Try asking for general news: 'latest news for {ticker}'"
+                }
+            return {"articles": articles, "type": "commentary"}
+        
+        # For US stocks, proceed with FMP API
         quarter_num = int(quarter.replace("Q", ""))
 
         url = f"https://financialmodelingprep.com/api/v3/earning_call_transcript/{ticker}"
@@ -172,7 +176,7 @@ class StockDataFetcher:
                         "suggestion": f"Try different quarters: 'Q4 {year-1} earnings' or 'Q3 {year-1} earnings'"
                     }
             
-            return data[0]
+            return {**data[0], "type": "transcript"}
         except Exception as e:
             return {
                 "error": f"Could not fetch earnings transcript: {str(e)}",
