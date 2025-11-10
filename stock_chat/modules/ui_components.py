@@ -99,7 +99,8 @@ def render_sidebar() -> Config:
             news_api_key=news_api_key or None,
             finnhub_api_key=finnhub_key or None,
             alpha_vantage_key=alpha_key or None,
-            twitter_bearer_token=twitter_token or None
+            twitter_bearer_token=twitter_token or None,
+            twitter_username=twitter_username or None
         )
 
 
@@ -167,6 +168,14 @@ def process_query(prompt: str, config: Config) -> str:
         data = fetcher.get_earnings_commentary(config.ticker, intent.get("quarter"))
         response = format_earnings_response(data, config.ticker)
         
+    elif intent["type"] == "tweets":
+        if not config.twitter_username:
+            return "⚠️ Please provide a Twitter username in the sidebar under the 'Twitter/Social Media' section."
+        
+        data = fetcher.get_leader_tweets(config.twitter_username)
+        response = format_tweets_response(data, config.twitter_username)
+
+
     else:
         # General query or unclear intent
         response = f"""**I can help you analyze {config.ticker}!** 📊
@@ -385,6 +394,28 @@ def format_earnings_response(data: Dict, ticker: str) -> str:
         return response
 
     return "⚠️ Could not format the earnings response. The data structure was not recognized."
+
+
+def format_tweets_response(tweets: List[Dict], username: str) -> str:
+    """Formats tweets into a markdown string."""
+    if not tweets:
+        return f"⚠️ No recent tweets found for **@{username}**. This could be due to an invalid username or API key."
+
+    response = f"## 🐦 Latest Tweets from @{username}\n\n---\n\n"
+
+    for tweet in tweets:
+        text = tweet.get('text', 'No content')
+        date = tweet.get('date', 'N/A')
+        likes = tweet.get('likes', 0)
+        retweets = tweet.get('retweets', 0)
+
+        response += f"**📝 Tweet:**\n\n"
+        response += f"> {text.replace('\n', '\n> ')}\n\n"
+        response += f"📅 **Date:** {date}\n"
+        response += f"❤️ **Likes:** {likes} | 🔁 **Retweets:** {retweets}\n\n"
+        response += "---\n\n"
+    
+    return response
 
 
 def format_large_number(value):

@@ -43,7 +43,7 @@ class StockDataFetcher:
         # Initialize data sources
         self.news_fetcher = NewsAPIFetcher(None)
         self.google_news = GoogleNewsFetcher()  # No API key needed!
-        self.twitter_fetcher = TwitterAPIFetcher(None)
+        self.twitter_fetcher = TwitterAPIFetcher(None) # Initialize with no token
         self.alpha_vantage = AlphaVantageFetcher(config.alpha_vantage_key)
         self.yahoo_finance = YahooFinanceFetcher()
         self.commentary_fetcher = CommentaryFetcher()
@@ -185,4 +185,7 @@ class StockDataFetcher:
     
     def get_leader_tweets(self, username: str) -> List[Dict]:
         """Fetch tweets from company leader"""
+        # CRITICAL: Always update the bearer token from the config right before fetching.
+        # This ensures that changes made in the UI are immediately reflected.
+        self.twitter_fetcher.bearer_token = self.config.twitter_bearer_token
         return self.twitter_fetcher.fetch(username)
