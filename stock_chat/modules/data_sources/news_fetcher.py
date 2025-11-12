@@ -27,8 +27,10 @@ class GoogleNewsFetcher:
         - List of news articles with title, source, date, url, and description
         """
         try:
-            # Build search query
-            search_query = f"{company_name} stock India"
+            # Build a more robust search query. Including the ticker symbol alongside
+            # the company name helps the GNews API find relevant stock market news
+            # more reliably, especially for large, well-known companies.
+            search_query = f'"{company_name}" OR {ticker}'
             
             params = {
                 "q": search_query,
