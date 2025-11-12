@@ -14,8 +14,6 @@ st.set_page_config(
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "selected_stock" not in st.session_state:
-    st.session_state.selected_stock = ""
 
 def main():
     # Sidebar

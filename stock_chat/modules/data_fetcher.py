@@ -1,37 +1,43 @@
 from typing import Dict, List, Optional
 from modules.data_sources.news_fetcher import NewsAPIFetcher, FinnhubNewsFetcher, GoogleNewsFetcher
 from modules.data_sources.twitter_fetcher import TwitterAPIFetcher
+from modules.data_sources.commentary_fetcher import CommentaryFetcher
 from modules.data_sources.fundamental_fetcher import AlphaVantageFetcher, YahooFinanceFetcher
 import requests
 from datetime import datetime
+import json
+import os
 
 FMP_API_KEY = "84y12ovhukWyiW2v1MjL4bxx8TXskGOb"
 
-# Common Indian stock tickers with company names
-INDIAN_STOCKS = {
-    'TCS': 'Tata Consultancy Services',
-    'INFY': 'Infosys',
-    'RELIANCE': 'Reliance Industries',
-    'HDFCBANK': 'HDFC Bank',
-    'ICICIBANK': 'ICICI Bank',
-    'HINDUNILVR': 'Hindustan Unilever',
-    'ITC': 'ITC Limited',
-    'SBIN': 'State Bank of India',
-    'BHARTIARTL': 'Bharti Airtel',
-    'KOTAKBANK': 'Kotak Mahindra Bank',
-    'LT': 'Larsen & Toubro',
-    'AXISBANK': 'Axis Bank',
-    'ASIANPAINT': 'Asian Paints',
-    'MARUTI': 'Maruti Suzuki',
-    'TITAN': 'Titan Company',
-    'BAJFINANCE': 'Bajaj Finance',
-    'SUNPHARMA': 'Sun Pharmaceutical',
-    'WIPRO': 'Wipro',
-    'TECHM': 'Tech Mahindra',
-    'HCLTECH': 'HCL Technologies',
-    'ULTRACEMCO': 'UltraTech Cement',
-    'NESTLEIND': 'Nestle India'
-}
+def load_indian_stocks():
+    """
+    Loads the comprehensive list of Indian stocks from a JSON file.
+    Falls back to a small hardcoded list if the file is not found.
+    """
+    json_path = os.path.join(os.path.dirname(__file__), 'data_sources', 'nse_stocks.json')
+    
+    if os.path.exists(json_path):
+        print("✅ Loading comprehensive NSE stock list...")
+        with open(json_path, 'r') as f:
+            return json.load(f)
+    else:
+        print("⚠️ Comprehensive NSE stock list not found. Using a small fallback list.")
+        print(f"💡 To generate the full list, run: python scripts/generate_stock_list.py")
+        # Fallback to a small list of common stocks
+        return {
+            'TCS': 'Tata Consultancy Services', 'INFY': 'Infosys', 'RELIANCE': 'Reliance Industries',
+            'HDFCBANK': 'HDFC Bank', 'ICICIBANK': 'ICICI Bank', 'HINDUNILVR': 'Hindustan Unilever',
+            'ITC': 'ITC Limited', 'SBIN': 'State Bank of India', 'BHARTIARTL': 'Bharti Airtel',
+            'KOTAKBANK': 'Kotak Mahindra Bank', 'LT': 'Larsen & Toubro', 'AXISBANK': 'Axis Bank',
+            'ASIANPAINT': 'Asian Paints', 'MARUTI': 'Maruti Suzuki', 'TITAN': 'Titan Company',
+            'BAJFINANCE': 'Bajaj Finance', 'SUNPHARMA': 'Sun Pharmaceutical', 'WIPRO': 'Wipro',
+            'TECHM': 'Tech Mahindra', 'HCLTECH': 'HCL Technologies', 'ULTRACEMCO': 'UltraTech Cement',
+            'NESTLEIND': 'Nestle India'
+        }
+
+# Load the list of all Indian stocks
+INDIAN_STOCKS = load_indian_stocks()
 
 class StockDataFetcher:
     """Unified interface for all data sources"""
@@ -42,9 +48,10 @@ class StockDataFetcher:
         # Initialize data sources
         self.news_fetcher = NewsAPIFetcher(None)
         self.google_news = GoogleNewsFetcher()  # No API key needed!
-        self.twitter_fetcher = TwitterAPIFetcher(None)
+        self.twitter_fetcher = TwitterAPIFetcher(None) # Initialize with no token
         self.alpha_vantage = AlphaVantageFetcher(config.alpha_vantage_key)
         self.yahoo_finance = YahooFinanceFetcher()
+        self.commentary_fetcher = CommentaryFetcher()
     
     def _is_indian_stock(self, ticker: str) -> bool:
         """Check if ticker is likely an Indian stock"""
@@ -123,17 +130,6 @@ class StockDataFetcher:
         
         # Check if it's an Indian stock
         is_indian = self._is_indian_stock(ticker)
-        
-        if is_indian:
-            company_name = self._get_company_name(ticker)
-            return {
-                "error": f"Earnings transcripts not available for {company_name} ({ticker})",
-                "note": "Indian Stock Limitation",
-                "suggestion": "Try checking the company's investor relations website or search for earnings news instead.",
-                "alternative": f"You can ask: 'What's the latest news about {ticker} earnings?'"
-            }
-        
-        # For US stocks, proceed with FMP API
         now = datetime.now()
         year = now.year
         
@@ -145,6 +141,19 @@ class StockDataFetcher:
                 year -= 1
             quarter = f"Q{last_quarter_num}"
 
+        if is_indian:
+            company_name = self._get_company_name(ticker)
+            print(f"Fetching earnings commentary for Indian stock: {company_name}")
+            articles = self.commentary_fetcher.fetch(company_name, quarter, str(year))
+            if not articles:
+                return {
+                    "error": f"No earnings commentary found for {company_name} ({ticker}) for {quarter} {year}",
+                    "note": "Indian Stock Information",
+                    "suggestion": "Try asking for general news: 'latest news for {ticker}'"
+                }
+            return {"articles": articles, "type": "commentary"}
+        
+        # For US stocks, proceed with FMP API
         quarter_num = int(quarter.replace("Q", ""))
 
         url = f"https://financialmodelingprep.com/api/v3/earning_call_transcript/{ticker}"
@@ -172,7 +181,7 @@ class StockDataFetcher:
                         "suggestion": f"Try different quarters: 'Q4 {year-1} earnings' or 'Q3 {year-1} earnings'"
                     }
             
-            return data[0]
+            return {**data[0], "type": "transcript"}
         except Exception as e:
             return {
                 "error": f"Could not fetch earnings transcript: {str(e)}",
@@ -181,4 +190,7 @@ class StockDataFetcher:
     
     def get_leader_tweets(self, username: str) -> List[Dict]:
         """Fetch tweets from company leader"""
+        # CRITICAL: Always update the bearer token from the config right before fetching.
+        # This ensures that changes made in the UI are immediately reflected.
+        self.twitter_fetcher.bearer_token = self.config.twitter_bearer_token
         return self.twitter_fetcher.fetch(username)
