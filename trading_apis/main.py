@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, HTTPException, WebSocket, WebSocketDisconnect, Header
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -13,6 +13,7 @@ from models import StrategyRequest, Condition
 from data_fetcher import fetch_and_process, combine_timeframes
 from strategies import evaluate_multi_timeframe_conditions
 from scanner import ScannerManager
+from perplexity_client import chat_with_perplexity
 from utils import parse_time_params
 
 app = FastAPI(
@@ -94,6 +95,38 @@ def list_indicators():
             {"indicator": "VOLUME_RATIO", "operator": ">", "value": 1.5, "timeframe": 5}
         ]
     }
+
+# ============================================================================
+# Perplexity Chatbot Endpoint
+# ============================================================================
+
+@app.get("/chatbot")
+async def chat_with_perplexity_endpoint(
+    prompt: str = Query(..., description="The prompt for the Perplexity AI chatbot."),
+    authorization: str = Header(..., description="Perplexity AI API Key. Use 'Bearer <YOUR_API_KEY>'.")
+):
+    """
+    Chat with Perplexity AI using the Sonar model.
+    """
+    try:
+        # Extract the key from the "Bearer <token>" format
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Invalid authorization header format. Use 'Bearer <key>'.")
+        api_key = authorization.split(" ")[1]
+
+        result = chat_with_perplexity(prompt, api_key)
+        if result['error']:
+            raise HTTPException(status_code=500, detail=result['text'])
+        return {
+            "response": result['text'],
+            "citations": result['citations'],
+            "message": "Successfully retrieved response from Perplexity AI."
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Internal error: {str(e)}"
+        )
+
 
 # ============================================================================
 # Multi-Timeframe Strategy Endpoint
@@ -674,8 +707,20 @@ async def websocket_scanner_alerts(websocket: WebSocket, scanner_id: str):
             "type": "connected",
             "message": f"Connected to scanner {scanner_id}. Waiting for alerts..."
         })
+        # Keep the connection alive and listen for client-side closure
         while True:
-            await websocket.receive_text()
+            try:
+                # Wait for a message from the client with a timeout
+                # This also helps detect if the client has disconnected
+                await asyncio.wait_for(websocket.receive_text(), timeout=60)
+            except asyncio.TimeoutError:
+                # No message from client, send a ping to check if it's still alive
+                try:
+                    await websocket.send_json({"type": "ping"})
+                except WebSocketDisconnect:
+                    break # Client disconnected
+            except WebSocketDisconnect:
+                break # Client disconnected
     except WebSocketDisconnect:
         manager.disconnect(websocket, scanner_id)
         print(f"Client disconnected from scanner {scanner_id}.")

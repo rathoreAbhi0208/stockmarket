@@ -44,7 +44,7 @@ class StockScanner:
             print(f"Loaded {len(nse_symbols)} NSE symbols and {len(indices)} indices.")
             return nse_symbols + indices
         except Exception as e:
-            print(f"❌ Could not fetch symbol list: {e}. Using a fallback list.")
+            print(f"Could not fetch symbol list: {e}. Using a fallback list.")
             return ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'NIFTY', 'BANKNIFTY']
 
     async def _evaluate_symbol(self, symbol: str):
@@ -85,7 +85,7 @@ class StockScanner:
 
         except Exception as e:
             # Errors are expected (e.g., bad data for a symbol), so we just log it and continue
-            print(f"⚠️ Error processing symbol {symbol}: {e}")
+            print(f"Error processing symbol {symbol}: {e}")
 
     async def run(self):
         """
@@ -116,7 +116,7 @@ class StockScanner:
     def stop(self):
         """Stops the scanner loop."""
         self.is_running = False
-        print(f"🛑 Stopping stock scanner for ID: {self.scanner_id}...")
+        print(f" Stopping stock scanner for ID: {self.scanner_id}...")
 
 
 class ScannerManager:
